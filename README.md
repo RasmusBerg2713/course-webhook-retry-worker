@@ -1,10 +1,10 @@
 # Reliable course webhooks before the learner deadline
 
-Path is short. Accept a typed course event, publish it to Infrai with one API key, then let a worker deliver the webhook and write an educator-readable outcome. Infrai keeps the queue behind plain REST calls, so you need no queue SDK. One key, one bill, every capability, from any language.
+Path is short. Accept a typed course event, publish it to Infrai with one API key, then a worker delivers the webhook and writes an educator-readable outcome. Infrai keeps the queue behind plain REST calls, so there's no queue SDK to wire up.
 
 ## Run the checkout-shaped flow
 
-I treat a course event like an order leaving checkout. Return fast after it's durably queued. Worker owns delivery.
+I model a course event like an order leaving checkout: return fast once it's durably queued, let a worker own delivery.
 
 ```bash
 npm install
@@ -12,7 +12,7 @@ export INFRAI_API_KEY="your-key"
 npm run dev
 ```
 
-In another shell, send one learner deadline event:
+In another shell, fire one learner deadline event:
 
 ```bash
 curl -X POST http://localhost:3000/course-events \
@@ -28,30 +28,30 @@ curl -X POST http://localhost:3000/course-events \
   }'
 ```
 
-The route validates the body with Zod and returns:
+Route validates the body with Zod and returns:
 
 ```json
 {"event_id":"evt-course-1042","delivery":"queued"}
 ```
 
-Run a delivery batch with `npm run worker`. A successful target produces an `ack-delivered` report with course, learner, and educator ids.
+Run a delivery batch with `npm run worker`. A hit on the target emits an `ack-delivered` report with course, learner, and educator ids.
 
 ## The retry decision
 
-Worker pulls up to ten messages with a 30s visibility timeout. Ack after successful delivery. If delivery fails and the deadline is still open, leave it unacked so the queue redelivers. Once the deadline passed, ack and report `ack-expired` instead of sending stale reminders.
+Worker pulls up to ten messages with a 30s visibility timeout. It acks after successful delivery. If delivery fails and the learner deadline is still open, it leaves the message unacked on purpose so the queue re-exposes it. Past the deadline, it acks and reports `ack-expired` instead of pushing stale reminders.
 
-Real gotcha is ack timing. Ack before the destination answers, a process exit drops the educator event. Ack after the decision, queue stays source of truth. Queue publish and webhook delivery both carry the stable `event_id` as idempotency key. Retried write is the same business event.
+Real gotcha is ack timing. Ack before the destination responds and a crash drops the educator event. Ack only after the decision; queue stays the source of delivery state. Queue publish and webhook delivery both carry the stable `event_id` as idempotency key, so a retried write is the same business event.
 
 ## Check the business rule
 
-Focused test feeds a failed delivery, deadline at `2026-09-01T12:00:00.000Z`, clock one minute earlier. Expected: `retry`. Boundary pinned: at deadline, result is `ack-expired`.
+Focused test feeds a failed delivery, deadline at `2026-09-01T12:00:00.000Z`, clock one minute earlier. Expected: `retry`. Boundary pinned too: at the deadline, result is `ack-expired`.
 
 ```bash
 npm test
 npm run typecheck
 ```
 
-This example stops at one HTTP intake route and one batch worker. Deployed, run the worker on your process scheduler. Ship its JSON outcome lines to the educator reporting store you already run.
+This stops at one HTTP intake route and one batch worker. Deployed, run the worker on your normal process scheduler and ship its JSON outcome lines to the educator reporting store you already run.
 
 ## License
 
